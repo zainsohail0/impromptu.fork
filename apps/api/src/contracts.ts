@@ -1,5 +1,18 @@
 import { healthContract } from "./health/contract.js";
+import { lobbyContracts } from "./lobbies/contract.js";
 import { topicContracts } from "./topics/contract.js";
+
+export {
+  lobbyParticipantSchema,
+  positionChangeBodySchema,
+  positionChangeErrorSchema,
+  positionChangeResultSchema,
+  type LobbyParticipant,
+  type PositionChangeError,
+  type PositionChangeInput,
+  type PositionChangeResult,
+  type PublicLobbySummary,
+} from "./lobbies/contract.js";
 
 export {
   errorSchema,
@@ -22,5 +35,6 @@ export const PRODUCT = {
 
 export const apiContract = {
   health: healthContract,
+  ...lobbyContracts,
   ...topicContracts,
 } as const;

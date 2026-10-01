@@ -78,6 +78,13 @@ export async function joinTopicByCode(input: JoinByCodeInput) {
   return readResponse(response, apiContract.joinByCode.response);
 }
 
+export async function getPublicLobbies() {
+  const response = await fetch(apiContract.publicLobbies.path, {
+    headers: { accept: "application/json" },
+  });
+  return readResponse(response, apiContract.publicLobbies.response);
+}
+
 export async function joinTopic(topicId: string, input: JoinInput) {
   const path = apiContract.join.path.replace(
     ":topicId",

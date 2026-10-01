@@ -1,6 +1,66 @@
 import { expect, test } from "@playwright/test";
 import { apiContract } from "@impromptu/api/contracts";
 
+test("browses public lobbies and retries a failed retrieval", async ({
+  page,
+}) => {
+  let attempts = 0;
+  let serviceAvailable = false;
+  await page.route("**/api/lobbies/public", async (route) => {
+    attempts += 1;
+    if (!serviceAvailable) {
+      await route.fulfill({
+        contentType: "application/json",
+        status: 503,
+        body: JSON.stringify({ message: "Lobby service unavailable" }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      contentType: "application/json",
+      status: 200,
+      body: JSON.stringify([
+        {
+          id: "long-question",
+          question:
+            "Should cities replace most downtown parking spaces with parks and public gathering areas?",
+          visibility: "public",
+          participantCount: 12,
+          status: "active",
+        },
+        {
+          id: "school-start",
+          question: "Should school start later?",
+          visibility: "public",
+          participantCount: 1,
+          status: "waiting",
+        },
+      ]),
+    });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/lobbies");
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Could not load public lobbies.",
+  );
+  serviceAvailable = true;
+  await page.getByRole("button", { name: "Retry" }).click();
+
+  const lobbyList = page.getByRole("region", { name: "Public lobbies" });
+  await expect(lobbyList).toBeVisible();
+  await expect(
+    lobbyList.getByRole("heading", { name: "Should school start later?" }),
+  ).toBeVisible();
+  await expect(lobbyList.getByText("1 participant")).toBeVisible();
+  await expect(lobbyList.getByText("Waiting")).toBeVisible();
+  await expect(lobbyList.getByText("12 participants")).toBeVisible();
+  await expect(lobbyList.getByText("Active")).toBeVisible();
+  expect(attempts).toBeGreaterThanOrEqual(2);
+});
+
 test("loads backend topics and enters a debate", async ({ page }) => {
   let joinRequests = 0;
   let leaveRequests = 0;

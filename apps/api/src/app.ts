@@ -9,6 +9,11 @@ import {
 import Fastify from "fastify";
 
 import { healthRoutes } from "./health/routes.js";
+import {
+  createMemoryLobbyRepository,
+  type LobbyRepository,
+} from "./lobbies/data.js";
+import { lobbyRoutes } from "./lobbies/routes.js";
 import type { PrivateLobbyStore } from "./lobbies/store.js";
 import type { LiveKitGateway } from "./topics/livekit.js";
 import { topicRoutes } from "./topics/routes.js";
@@ -18,6 +23,7 @@ type BuildAppOptions = {
   privateLobbies: PrivateLobbyStore;
   livekitPublicUrl: string;
   tokenTtlSeconds: number;
+  lobbies?: LobbyRepository;
   logger?: boolean;
   serveWeb?: boolean;
 };
@@ -38,6 +44,9 @@ export async function buildApp(options: BuildAppOptions) {
   });
 
   await app.register(healthRoutes);
+  await app.register(lobbyRoutes, {
+    lobbies: options.lobbies ?? createMemoryLobbyRepository(),
+  });
   await app.register(topicRoutes, {
     livekit: options.livekit,
     privateLobbies: options.privateLobbies,

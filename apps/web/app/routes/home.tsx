@@ -7,6 +7,7 @@ import { LockKeyholeIcon } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import {
   Form,
+  Link,
   useLoaderData,
   useLocation,
   useNavigate,
@@ -573,10 +574,16 @@ export default function Home() {
   return (
     <main className="min-h-svh bg-background">
       <header className="bg-[#f8fafc]">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-4 sm:px-6">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
           <p className="font-editorial text-xl font-semibold tracking-tight text-primary">
             {PRODUCT.name}
           </p>
+          <Link
+            className="text-sm font-medium text-primary hover:underline"
+            to="/lobbies"
+          >
+            Browse lobbies
+          </Link>
         </div>
       </header>
       <section className="mx-auto w-full max-w-6xl px-4 py-3 sm:px-6 sm:py-5">
