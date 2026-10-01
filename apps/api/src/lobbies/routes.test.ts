@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app.js";
 import { apiContract } from "../contracts.js";
 import type { LiveKitGateway } from "../topics/livekit.js";
-import { createMemoryLobbyRepository, type LobbyRecord } from "./data.js";
+import {
+  createMemoryPublicLobbyRepository,
+  type PublicLobbyRecord,
+} from "./data.js";
 import { createMemoryPrivateLobbyStore } from "./store.js";
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
@@ -20,9 +23,9 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-async function testApp(lobbies: LobbyRecord[]) {
+async function testApp(publicLobbies: PublicLobbyRecord[]) {
   const app = await buildApp({
-    lobbies: createMemoryLobbyRepository(lobbies),
+    publicLobbies: createMemoryPublicLobbyRepository(publicLobbies),
     privateLobbies: createMemoryPrivateLobbyStore(),
     livekit,
     livekitPublicUrl: "ws://localhost:7880",
@@ -33,11 +36,10 @@ async function testApp(lobbies: LobbyRecord[]) {
 }
 
 function publicLobby(
-  overrides: Partial<Omit<LobbyRecord, "ownerId" | "visibility">> = {},
-): LobbyRecord {
+  overrides: Partial<Omit<PublicLobbyRecord, "visibility">> = {},
+): PublicLobbyRecord {
   return {
     id: "lobby-1",
-    ownerId: null,
     question: "Should school start later?",
     initialTimeLimitSeconds: 300,
     rebuttalTimeLimitSeconds: 120,
@@ -61,11 +63,6 @@ describe("GET /api/lobbies/public", () => {
         status: "active",
       }),
       publicLobby({ id: "a", question: "Apples or oranges?" }),
-      {
-        ...publicLobby({ id: "private" }),
-        ownerId: "owner-1",
-        visibility: "private",
-      },
     ]);
 
     const response = await app.inject({
@@ -86,13 +83,7 @@ describe("GET /api/lobbies/public", () => {
   });
 
   it("returns an empty list when there are no public lobbies", async () => {
-    const app = await testApp([
-      {
-        ...publicLobby({ id: "private" }),
-        ownerId: "owner-1",
-        visibility: "private",
-      },
-    ]);
+    const app = await testApp([]);
     const response = await app.inject({
       method: "GET",
       url: apiContract.publicLobbies.path,

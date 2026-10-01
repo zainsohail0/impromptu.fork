@@ -1,12 +1,8 @@
 import type { z } from "zod";
 
-import {
-  lobbyStatusSchema,
-  lobbyVisibilitySchema,
-  type PublicLobbySummary,
-} from "./contract.js";
+import { lobbyStatusSchema, type PublicLobbySummary } from "./contract.js";
 
-type LobbyRecordFields = {
+export type PublicLobbyRecord = {
   id: string;
   question: string;
   initialTimeLimitSeconds: number;
@@ -15,24 +11,16 @@ type LobbyRecordFields = {
   participantIds: string[];
   spectatorLimit: number | null;
   status: z.output<typeof lobbyStatusSchema>;
+  visibility: "public";
 };
 
-export type LobbyRecord = LobbyRecordFields &
-  (
-    | { ownerId: null; visibility: "public" }
-    | {
-        ownerId: string;
-        visibility: Exclude<z.output<typeof lobbyVisibilitySchema>, "public">;
-      }
-  );
-
-export type LobbyRepository = {
-  list(): Promise<LobbyRecord[]>;
+export type PublicLobbyRepository = {
+  list(): Promise<PublicLobbyRecord[]>;
 };
 
-export function createMemoryLobbyRepository(
-  initialLobbies: LobbyRecord[] = [],
-): LobbyRepository {
+export function createMemoryPublicLobbyRepository(
+  initialLobbies: PublicLobbyRecord[] = [],
+): PublicLobbyRepository {
   return {
     async list() {
       return initialLobbies;
@@ -41,10 +29,8 @@ export function createMemoryLobbyRepository(
 }
 
 export function toPublicLobbySummary(
-  lobby: LobbyRecord,
-): PublicLobbySummary | undefined {
-  if (lobby.visibility !== "public") return undefined;
-
+  lobby: PublicLobbyRecord,
+): PublicLobbySummary {
   return {
     id: lobby.id,
     question: lobby.question,

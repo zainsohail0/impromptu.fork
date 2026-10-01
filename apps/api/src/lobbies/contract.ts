@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 export const lobbyStatusSchema = z.enum(["waiting", "active"]);
-export const lobbyVisibilitySchema = z.enum(["public", "private"]);
 export const lobbySideSchema = z.union([z.literal(0), z.literal(1)]);
 
 export const lobbyParticipantSchema = z.discriminatedUnion("role", [

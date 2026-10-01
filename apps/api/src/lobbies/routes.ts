@@ -1,10 +1,10 @@
 import type { FastifyPluginAsyncZod } from "@fastify/type-provider-zod";
 
 import { lobbyContracts } from "./contract.js";
-import { toPublicLobbySummary, type LobbyRepository } from "./data.js";
+import { toPublicLobbySummary, type PublicLobbyRepository } from "./data.js";
 
 export type LobbyRoutesOptions = {
-  lobbies: LobbyRepository;
+  publicLobbies: PublicLobbyRepository;
 };
 
 export const lobbyRoutes: FastifyPluginAsyncZod<LobbyRoutesOptions> = async (
@@ -15,9 +15,9 @@ export const lobbyRoutes: FastifyPluginAsyncZod<LobbyRoutesOptions> = async (
     lobbyContracts.publicLobbies.path,
     { schema: { response: { 200: lobbyContracts.publicLobbies.response } } },
     async () => {
-      const summaries = (await options.lobbies.list())
-        .map(toPublicLobbySummary)
-        .filter((lobby) => lobby !== undefined);
+      const summaries = (await options.publicLobbies.list()).map(
+        toPublicLobbySummary,
+      );
 
       return summaries.sort(
         (a, b) =>
