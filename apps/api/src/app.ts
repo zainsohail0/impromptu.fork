@@ -10,7 +10,7 @@ import Fastify from "fastify";
 
 import { healthRoutes } from "./health/routes.js";
 import {
-  createMemoryPublicLobbyRepository,
+  createLivePublicLobbyRepository,
   type PublicLobbyRepository,
 } from "./lobbies/data.js";
 import { lobbyRoutes } from "./lobbies/routes.js";
@@ -45,7 +45,8 @@ export async function buildApp(options: BuildAppOptions) {
 
   await app.register(healthRoutes);
   await app.register(lobbyRoutes, {
-    publicLobbies: options.publicLobbies ?? createMemoryPublicLobbyRepository(),
+    publicLobbies:
+      options.publicLobbies ?? createLivePublicLobbyRepository(options.livekit),
   });
   await app.register(topicRoutes, {
     livekit: options.livekit,

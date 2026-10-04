@@ -42,11 +42,7 @@ function publicLobby(
   return {
     id: "lobby-1",
     question: "Should school start later?",
-    initialTimeLimitSeconds: 300,
-    rebuttalTimeLimitSeconds: 120,
-    startTime: null,
     visibility: "public",
-    spectatorLimit: 20,
     participantIds: [],
     status: "waiting",
     ...overrides,
@@ -60,7 +56,6 @@ describe("GET /api/lobbies/public", () => {
         id: "z",
         question: "Zebras or horses?",
         participantIds: ["participant-one", "participant-two"],
-        startTime: "2026-09-24T18:00:00.000Z",
         status: "active",
       }),
       publicLobby({ id: "a", question: "Apples or oranges?" }),
@@ -80,6 +75,46 @@ describe("GET /api/lobbies/public", () => {
         status: "active",
         visibility: "public",
       }),
+    );
+  });
+
+  it("derives system lobby counts and status from LiveKit", async () => {
+    const activeLivekit: LiveKitGateway = {
+      ...livekit,
+      async listParticipants(roomName) {
+        if (roomName !== "debate-dream-cheating") return [];
+        return [
+          { identity: "debater-one", role: "debater", sideIndex: 0 },
+          { identity: "debater-two", role: "debater", sideIndex: 1 },
+          { identity: "spectator-one", role: "spectator", sideIndex: null },
+        ];
+      },
+    };
+    const app = await buildApp({
+      privateLobbies: createMemoryPrivateLobbyStore(),
+      livekit: activeLivekit,
+      livekitPublicUrl: "ws://localhost:7880",
+      tokenTtlSeconds: 60,
+    });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: apiContract.publicLobbies.path,
+    });
+    const summaries = apiContract.publicLobbies.response.parse(response.json());
+
+    expect(response.statusCode).toBe(200);
+    expect(summaries).toHaveLength(3);
+    expect(summaries).toContainEqual({
+      id: "dream-cheating",
+      question: "Can you cheat in a dream?",
+      participantCount: 3,
+      status: "active",
+      visibility: "public",
+    });
+    expect(summaries.find(({ id }) => id === "moral-lying")?.status).toBe(
+      "waiting",
     );
   });
 
