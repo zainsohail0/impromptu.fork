@@ -16,6 +16,12 @@ export type LiveKitGateway = {
     { identity: string; role: DebateRole; sideIndex: DebateSide | null }[]
   >;
   removeParticipant(roomName: string, identity: string): Promise<void>;
+  updateParticipantPosition(
+    roomName: string,
+    identity: string,
+    role: DebateRole,
+    sideIndex: DebateSide | null,
+  ): Promise<void>;
   issueToken(input: {
     displayName: string;
     identity: string;
@@ -83,6 +89,23 @@ export function createLiveKitGateway(
         if (isMissingRoom(error)) return;
         throw error;
       }
+    },
+
+    async updateParticipantPosition(roomName, identity, role, sideIndex) {
+      const isDebater = role === "debater";
+      await rooms.updateParticipant(roomName, identity, {
+        attributes: {
+          [SIDE_ATTRIBUTE]: sideIndex === null ? "" : String(sideIndex),
+        },
+        permission: {
+          canPublish: isDebater,
+          canPublishData: !isDebater,
+          canPublishSources: isDebater
+            ? [TrackSource.CAMERA, TrackSource.MICROPHONE]
+            : [],
+          canSubscribe: true,
+        },
+      });
     },
 
     async issueToken({ displayName, identity, role, roomName, sideIndex }) {
@@ -247,6 +270,70 @@ export function createRoleAllocator(
           pending.get(lobbyId)?.delete(identity);
           throw error;
         }
+      });
+    },
+
+    changePosition(
+      lobbyId: string,
+      identity: string,
+      requestedSide: DebateSide | null,
+    ) {
+      return inLobbyLock(lobbyId, async () => {
+        const participants = await livekit.listParticipants(
+          `debate-${lobbyId}`,
+        );
+        const participant = participants.find(
+          (candidate) => candidate.identity === identity,
+        );
+        if (!participant) return { status: "not-participant" as const };
+
+        const debaters = participants.filter(
+          (candidate) => candidate.role === "debater",
+        );
+        if (debaters.length >= 2) return { status: "active" as const };
+
+        if (
+          requestedSide !== null &&
+          debaters.some(
+            (candidate) =>
+              candidate.identity !== identity &&
+              candidate.sideIndex === requestedSide,
+          )
+        ) {
+          return { status: "unavailable" as const };
+        }
+
+        if (requestedSide === null) {
+          await livekit.updateParticipantPosition(
+            `debate-${lobbyId}`,
+            identity,
+            "spectator",
+            null,
+          );
+          return {
+            status: "changed" as const,
+            participant: {
+              id: identity,
+              role: "spectator" as const,
+              sideIndex: null,
+            },
+          };
+        }
+
+        await livekit.updateParticipantPosition(
+          `debate-${lobbyId}`,
+          identity,
+          "debater",
+          requestedSide,
+        );
+        return {
+          status: "changed" as const,
+          participant: {
+            id: identity,
+            role: "debater" as const,
+            sideIndex: requestedSide,
+          },
+        };
       });
     },
 

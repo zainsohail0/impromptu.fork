@@ -5,11 +5,13 @@ import { topicContracts } from "./topics/contract.js";
 export {
   lobbyParticipantSchema,
   positionChangeBodySchema,
+  positionChangeRequestSchema,
   positionChangeErrorSchema,
   positionChangeResultSchema,
   type LobbyParticipant,
   type PositionChangeError,
   type PositionChangeInput,
+  type PositionChangeRequest,
   type PositionChangeResult,
   type PublicLobbySummary,
 } from "./lobbies/contract.js";

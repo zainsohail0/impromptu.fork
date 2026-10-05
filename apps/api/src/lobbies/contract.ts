@@ -20,6 +20,14 @@ export const positionChangeBodySchema = z.strictObject({
   sideIndex: lobbySideSchema.nullable(),
 });
 
+export const positionChangeParamsSchema = z.strictObject({
+  lobbyId: z.string().min(1),
+});
+
+export const positionChangeRequestSchema = positionChangeBodySchema.extend({
+  participantIdentity: z.string().uuid(),
+});
+
 export const positionChangeResultSchema = z.strictObject({
   participant: lobbyParticipantSchema,
 });
@@ -50,10 +58,25 @@ export const lobbyContracts = {
     path: "/api/lobbies/public",
     response: publicLobbyListSchema,
   },
+  changePosition: {
+    method: "PATCH",
+    path: "/api/lobbies/:lobbyId/position",
+    params: positionChangeParamsSchema,
+    body: positionChangeRequestSchema,
+    response: positionChangeResultSchema,
+    errors: {
+      403: positionChangeErrorSchema,
+      404: positionChangeErrorSchema,
+      409: positionChangeErrorSchema,
+    },
+  },
 } as const;
 
 export type PublicLobbySummary = z.output<typeof publicLobbySummarySchema>;
 export type LobbyParticipant = z.output<typeof lobbyParticipantSchema>;
 export type PositionChangeInput = z.output<typeof positionChangeBodySchema>;
+export type PositionChangeRequest = z.output<
+  typeof positionChangeRequestSchema
+>;
 export type PositionChangeResult = z.output<typeof positionChangeResultSchema>;
 export type PositionChangeError = z.output<typeof positionChangeErrorSchema>;

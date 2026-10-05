@@ -4,6 +4,7 @@ import {
   type JoinByCodeInput,
   type JoinInput,
   type PrivateLobbyCreateInput,
+  type PositionChangeRequest,
 } from "@impromptu/api/contracts";
 
 async function readResponse<T>(
@@ -14,7 +15,16 @@ async function readResponse<T>(
 
   if (!response.ok) {
     const error = errorSchema.safeParse(payload);
-    throw new Error(error.success ? error.data.message : "The request failed");
+    const message =
+      typeof payload === "object" &&
+      payload !== null &&
+      "message" in payload &&
+      typeof payload.message === "string"
+        ? payload.message
+        : undefined;
+    throw new Error(
+      error.success ? error.data.message : (message ?? "The request failed"),
+    );
   }
 
   return schema.parse(payload);
@@ -123,4 +133,23 @@ export async function leaveTopic(
     body: JSON.stringify({ lobbyId, participantIdentity }),
   });
   return readResponse(response, apiContract.leave.response);
+}
+
+export async function changePosition(
+  lobbyId: string,
+  input: PositionChangeRequest,
+) {
+  const path = apiContract.changePosition.path.replace(
+    ":lobbyId",
+    encodeURIComponent(lobbyId),
+  );
+  const response = await fetch(path, {
+    method: apiContract.changePosition.method,
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  return readResponse(response, apiContract.changePosition.response);
 }

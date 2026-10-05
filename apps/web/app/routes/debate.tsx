@@ -9,6 +9,8 @@ import {
   RoomAudioRenderer,
   VideoTrack,
   useChat,
+  useLocalParticipant,
+  useLocalParticipantPermissions,
   useParticipants,
   useRoomContext,
   useTracks,
@@ -57,7 +59,7 @@ import {
 } from "~/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 
-import { joinTopic, leaveTopic } from "../api";
+import { changePosition, joinTopic, leaveTopic } from "../api";
 
 const VOTE_ATTRIBUTE = "debate.vote";
 const SIDE_ATTRIBUTE = "debate.side";
@@ -353,19 +355,23 @@ function RoomChat({
 }
 
 function AudiencePanel({
-  canVote,
+  join,
   participantIdentity,
   sides,
 }: {
-  canVote: boolean;
+  join: JoinResult;
   participantIdentity: string;
   sides: JoinResult["sides"];
 }) {
   const participants = useParticipants();
   const room = useRoomContext();
+  const permissions = useLocalParticipantPermissions();
+  const { localParticipant } = useLocalParticipant();
   const [activeTab, setActiveTab] = useState<"vote" | "participants">("vote");
   const [isVoting, setIsVoting] = useState(false);
+  const [isChangingPosition, setIsChangingPosition] = useState(false);
   const [error, setError] = useState<string>();
+  const canVote = permissions?.canPublish !== true;
   const debaterCount = participants.filter(
     (participant) => participant.permissions?.canPublish === true,
   ).length;
@@ -384,6 +390,51 @@ function AudiencePanel({
       ).length,
   );
   const voteTotal = voteCounts.reduce((total, count) => total + count, 0);
+  const currentParticipant = participants.find(
+    (participant) => participant.identity === participantIdentity,
+  );
+  const currentSide = currentParticipant?.attributes[SIDE_ATTRIBUTE];
+  const roundActive = debaterCount >= 2;
+  const occupiedSides = new Set(
+    participants.flatMap((participant) =>
+      participant.identity !== participantIdentity &&
+      participant.permissions?.canPublish === true &&
+      (participant.attributes[SIDE_ATTRIBUTE] === "0" ||
+        participant.attributes[SIDE_ATTRIBUTE] === "1")
+        ? [participant.attributes[SIDE_ATTRIBUTE]]
+        : [],
+    ),
+  );
+
+  async function selectPosition(sideIndex: 0 | 1 | null) {
+    setError(undefined);
+    setIsChangingPosition(true);
+    try {
+      await changePosition(join.lobbyId, {
+        participantIdentity,
+        sideIndex,
+      });
+      if (sideIndex === null) {
+        await Promise.all([
+          localParticipant.setCameraEnabled(false),
+          localParticipant.setMicrophoneEnabled(false),
+        ]);
+      } else {
+        await Promise.all([
+          localParticipant.setCameraEnabled(true, VIDEO_CAPTURE_720P),
+          localParticipant.setMicrophoneEnabled(true),
+        ]);
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Your position could not be changed.",
+      );
+    } finally {
+      setIsChangingPosition(false);
+    }
+  }
 
   async function vote(value: readonly string[]) {
     if (!canVote) return;
@@ -488,7 +539,61 @@ function AudiencePanel({
         tabIndex={0}
       >
         {activeTab === "participants" ? (
-          <section aria-label="Participants" className="grid gap-2">
+          <section aria-label="Participants" className="grid gap-4">
+            <div className="grid gap-2 border-b pb-4">
+              <div>
+                <h2 className="font-editorial text-lg font-semibold">
+                  Your position
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {roundActive
+                    ? "Positions are locked because both debater sides are filled."
+                    : "Choose an open debate side or join the audience."}
+                </p>
+              </div>
+              <div className="grid gap-2">
+                {sides.map((side, index) => {
+                  const sideIndex = index === 0 ? 0 : 1;
+                  const value = String(index);
+                  const selected =
+                    currentParticipant?.permissions?.canPublish === true &&
+                    currentSide === value;
+                  const occupied = occupiedSides.has(value);
+                  return (
+                    <Button
+                      aria-pressed={selected}
+                      disabled={
+                        roundActive ||
+                        isChangingPosition ||
+                        occupied ||
+                        selected
+                      }
+                      key={side}
+                      type="button"
+                      variant={selected ? "default" : "outline"}
+                      onClick={() => void selectPosition(sideIndex)}
+                    >
+                      {side}
+                      {occupied ? " — occupied" : selected ? " — you" : ""}
+                    </Button>
+                  );
+                })}
+                <Button
+                  aria-pressed={canVote}
+                  disabled={roundActive || isChangingPosition || canVote}
+                  type="button"
+                  variant={canVote ? "default" : "outline"}
+                  onClick={() => void selectPosition(null)}
+                >
+                  Spectator{canVote ? " — you" : ""}
+                </Button>
+              </div>
+              {error ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
             <ul className="grid gap-1 text-sm">
               {participants.map((participant) => (
                 <li
@@ -742,7 +847,7 @@ export function DebateExperience({ join }: { join: JoinResult }) {
         <div className="grid min-h-0 grid-rows-[minmax(12rem,36svh)_minmax(0,1fr)] lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)] lg:grid-rows-1">
           <DebateVideos sides={join.sides} />
           <AudiencePanel
-            canVote={!isDebater}
+            join={join}
             participantIdentity={join.participantIdentity}
             sides={join.sides}
           />

@@ -18,6 +18,7 @@ const livekit: LiveKitGateway = {
     return [];
   },
   async removeParticipant() {},
+  async updateParticipantPosition() {},
 };
 
 afterEach(async () => {

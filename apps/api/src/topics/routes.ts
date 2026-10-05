@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { FastifyPluginAsyncZod } from "@fastify/type-provider-zod";
 
+import { lobbyContracts } from "../lobbies/contract.js";
 import { topicContracts } from "./contract.js";
 import {
   createPrivateLobby,
@@ -112,6 +113,60 @@ export const topicRoutes: FastifyPluginAsyncZod<TopicRoutesOptions> = async (
         debaterCount,
         spectatorCount,
       };
+    },
+  );
+
+  app.patch(
+    lobbyContracts.changePosition.path,
+    {
+      schema: {
+        params: lobbyContracts.changePosition.params,
+        body: lobbyContracts.changePosition.body,
+        response: {
+          200: lobbyContracts.changePosition.response,
+          403: lobbyContracts.changePosition.errors[403],
+          404: lobbyContracts.changePosition.errors[404],
+          409: lobbyContracts.changePosition.errors[409],
+        },
+      },
+    },
+    async (request, reply) => {
+      const { lobbyId } = request.params;
+      const isPublicLobby = findTopic(lobbyId) !== undefined;
+      const privateLobby = isPublicLobby
+        ? undefined
+        : await options.privateLobbies.findById(lobbyId);
+      if (!isPublicLobby && !privateLobby) {
+        return reply.code(404).send({
+          code: "LOBBY_NOT_FOUND",
+          message: "Lobby not found.",
+        });
+      }
+
+      const result = await allocation.changePosition(
+        lobbyId,
+        request.body.participantIdentity,
+        request.body.sideIndex,
+      );
+      if (result.status === "not-participant") {
+        return reply.code(403).send({
+          code: "NOT_A_PARTICIPANT",
+          message: "You are not a participant in this lobby.",
+        });
+      }
+      if (result.status === "active") {
+        return reply.code(409).send({
+          code: "ROUND_ALREADY_STARTED",
+          message: "Positions cannot change after the round starts.",
+        });
+      }
+      if (result.status === "unavailable") {
+        return reply.code(409).send({
+          code: "POSITION_UNAVAILABLE",
+          message: "That debater position is already occupied.",
+        });
+      }
+      return { participant: result.participant };
     },
   );
 

@@ -18,26 +18,43 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  localState.canPublish = false;
 });
 
-const { disconnectRoom, leaveRoom, sendChat, setAttributes, setName } =
-  vi.hoisted(() => ({
-    disconnectRoom: vi.fn<() => Promise<void>>(),
-    leaveRoom:
-      vi.fn<
-        (
-          topicId: string,
-          lobbyId: string,
-          participantIdentity: string,
-        ) => Promise<unknown>
-      >(),
-    sendChat: vi.fn<(message: string) => Promise<unknown>>(),
-    setAttributes:
-      vi.fn<(attributes: Record<string, string>) => Promise<void>>(),
-    setName: vi.fn<(name: string) => Promise<void>>(),
-  }));
+const {
+  changeParticipantPosition,
+  disconnectRoom,
+  leaveRoom,
+  localState,
+  sendChat,
+  setAttributes,
+  setCameraEnabled,
+  setMicrophoneEnabled,
+  setName,
+} = vi.hoisted(() => ({
+  changeParticipantPosition: vi.fn<() => Promise<unknown>>(),
+  disconnectRoom: vi.fn<() => Promise<void>>(),
+  leaveRoom:
+    vi.fn<
+      (
+        topicId: string,
+        lobbyId: string,
+        participantIdentity: string,
+      ) => Promise<unknown>
+    >(),
+  sendChat: vi.fn<(message: string) => Promise<unknown>>(),
+  localState: { canPublish: false },
+  setAttributes: vi.fn<(attributes: Record<string, string>) => Promise<void>>(),
+  setCameraEnabled:
+    vi.fn<
+      (enabled: boolean, options?: { resolution: unknown }) => Promise<void>
+    >(),
+  setMicrophoneEnabled: vi.fn<(enabled: boolean) => Promise<void>>(),
+  setName: vi.fn<(name: string) => Promise<void>>(),
+}));
 
 vi.mock("../api", () => ({
+  changePosition: changeParticipantPosition,
   joinTopic: vi.fn<() => never>(),
   leaveTopic: leaveRoom,
 }));
@@ -104,6 +121,15 @@ vi.mock("@livekit/components-react", () => ({
       permissions: { canPublish: true },
     },
   ],
+  useLocalParticipant: () => ({
+    localParticipant: {
+      setCameraEnabled,
+      setMicrophoneEnabled,
+    },
+  }),
+  useLocalParticipantPermissions: () => ({
+    canPublish: localState.canPublish,
+  }),
   useRoomContext: () => ({
     disconnect: disconnectRoom,
     localParticipant: {
@@ -127,6 +153,61 @@ function LocationProbe() {
 }
 
 describe("DebateExperience", () => {
+  it("lets a spectator claim an open debater position", async () => {
+    changeParticipantPosition.mockResolvedValue({
+      participant: {
+        id: "7ffcd8af-4d5a-45d9-97cc-6db63b930b09",
+        role: "debater",
+        sideIndex: 1,
+      },
+    });
+    setCameraEnabled.mockResolvedValue();
+    setMicrophoneEnabled.mockResolvedValue();
+    const join: JoinResult = {
+      lobbyId: "dream-cheating",
+      topicId: "dream-cheating",
+      topicTitle: "Can you cheat in a dream?",
+      sides: ["Yes: intention still matters", "No: dreams are involuntary"],
+      participantIdentity: "7ffcd8af-4d5a-45d9-97cc-6db63b930b09",
+      displayName: "Test spectator",
+      role: "spectator",
+      sideIndex: null,
+      isCreator: false,
+      livekitUrl: "ws://localhost:7880",
+      token: "spectator-token",
+    };
+
+    render(
+      <MemoryRouter>
+        <DebateExperience join={join} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Participants/ }));
+    expect(
+      screen.getByRole("button", {
+        name: "Yes: intention still matters — occupied",
+      }),
+    ).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "No: dreams are involuntary" }),
+    );
+
+    await waitFor(() =>
+      expect(changeParticipantPosition).toHaveBeenCalledWith("dream-cheating", {
+        participantIdentity: join.participantIdentity,
+        sideIndex: 1,
+      }),
+    );
+    expect(setCameraEnabled).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        resolution: expect.objectContaining({ height: 720, width: 1280 }),
+      }),
+    );
+    expect(setMicrophoneEnabled).toHaveBeenCalledWith(true);
+  });
+
   it("connects spectators without publishing media and lets them vote and chat", async () => {
     sendChat.mockResolvedValue({});
     setAttributes.mockResolvedValue();
@@ -242,6 +323,7 @@ describe("DebateExperience", () => {
   });
 
   it("does not let a debater vote or send chat messages", () => {
+    localState.canPublish = true;
     const join: JoinResult = {
       lobbyId: "dream-cheating",
       topicId: "dream-cheating",
@@ -298,6 +380,7 @@ describe("DebateExperience", () => {
   });
 
   it("keeps the private lobby code visible after copying it", async () => {
+    localState.canPublish = true;
     const writeText = vi.fn<() => Promise<void>>().mockResolvedValue();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -406,6 +489,7 @@ describe("DebateExperience", () => {
   });
 
   it("disconnects a debater whose camera or microphone cannot start", async () => {
+    localState.canPublish = true;
     disconnectRoom.mockResolvedValue();
     leaveRoom.mockResolvedValue({ left: true });
     const join: JoinResult = {

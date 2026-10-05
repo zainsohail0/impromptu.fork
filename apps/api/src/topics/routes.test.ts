@@ -34,6 +34,12 @@ function fakeLiveKit(tokenFor: (role: DebateRole) => string = (role) => role) {
   const issuedRooms: string[] = [];
   const issuedNames: string[] = [];
   const removed: { roomName: string; identity: string }[] = [];
+  const updated: {
+    roomName: string;
+    identity: string;
+    role: DebateRole;
+    sideIndex: 0 | 1 | null;
+  }[] = [];
 
   const gateway: LiveKitGateway = {
     async listParticipants(roomName) {
@@ -48,6 +54,17 @@ function fakeLiveKit(tokenFor: (role: DebateRole) => string = (role) => role) {
         ),
       );
     },
+    async updateParticipantPosition(roomName, identity, role, sideIndex) {
+      updated.push({ roomName, identity, role, sideIndex });
+      active.set(
+        roomName,
+        (active.get(roomName) ?? []).map((participant) =>
+          participant.identity === identity
+            ? { identity, role, sideIndex }
+            : participant,
+        ),
+      );
+    },
     async issueToken({ displayName, role, roomName }) {
       issued.push(role);
       issuedRooms.push(roomName);
@@ -56,7 +73,15 @@ function fakeLiveKit(tokenFor: (role: DebateRole) => string = (role) => role) {
     },
   };
 
-  return { active, gateway, issued, issuedNames, issuedRooms, removed };
+  return {
+    active,
+    gateway,
+    issued,
+    issuedNames,
+    issuedRooms,
+    removed,
+    updated,
+  };
 }
 
 async function testApp(
@@ -515,6 +540,128 @@ describe("API contracts", () => {
     });
 
     expect(response.statusCode).toBe(500);
+  });
+});
+
+describe("position transfers", () => {
+  const participantIdentity = "11111111-1111-4111-8111-111111111111";
+  const otherIdentity = "22222222-2222-4222-8222-222222222222";
+  const path = "/api/lobbies/dream-cheating/position";
+
+  it("moves a spectator into an open side and back to spectating", async () => {
+    const { active, gateway, updated } = fakeLiveKit();
+    active.set("debate-dream-cheating", [
+      { identity: participantIdentity, role: "spectator", sideIndex: null },
+    ]);
+    const app = await testApp(gateway);
+
+    const claim = await app.inject({
+      method: "PATCH",
+      url: path,
+      payload: { participantIdentity, sideIndex: 1 },
+    });
+    const release = await app.inject({
+      method: "PATCH",
+      url: path,
+      payload: { participantIdentity, sideIndex: null },
+    });
+
+    expect(claim.statusCode).toBe(200);
+    expect(apiContract.changePosition.response.parse(claim.json())).toEqual({
+      participant: { id: participantIdentity, role: "debater", sideIndex: 1 },
+    });
+    expect(release.statusCode).toBe(200);
+    expect(updated).toEqual([
+      {
+        roomName: "debate-dream-cheating",
+        identity: participantIdentity,
+        role: "debater",
+        sideIndex: 1,
+      },
+      {
+        roomName: "debate-dream-cheating",
+        identity: participantIdentity,
+        role: "spectator",
+        sideIndex: null,
+      },
+    ]);
+  });
+
+  it("rejects occupied positions and changes after two debaters are active", async () => {
+    const { active, gateway } = fakeLiveKit();
+    active.set("debate-dream-cheating", [
+      { identity: participantIdentity, role: "spectator", sideIndex: null },
+      { identity: otherIdentity, role: "debater", sideIndex: 0 },
+    ]);
+    const app = await testApp(gateway);
+
+    const occupied = await app.inject({
+      method: "PATCH",
+      url: path,
+      payload: { participantIdentity, sideIndex: 0 },
+    });
+    active.set("debate-dream-cheating", [
+      { identity: participantIdentity, role: "debater", sideIndex: 1 },
+      { identity: otherIdentity, role: "debater", sideIndex: 0 },
+    ]);
+    const activeRound = await app.inject({
+      method: "PATCH",
+      url: path,
+      payload: { participantIdentity, sideIndex: null },
+    });
+
+    expect(occupied.statusCode).toBe(409);
+    expect(
+      apiContract.changePosition.errors[409].parse(occupied.json()).code,
+    ).toBe("POSITION_UNAVAILABLE");
+    expect(activeRound.statusCode).toBe(409);
+    expect(
+      apiContract.changePosition.errors[409].parse(activeRound.json()).code,
+    ).toBe("ROUND_ALREADY_STARTED");
+  });
+
+  it("rejects unknown lobbies and identities outside the room", async () => {
+    const { gateway } = fakeLiveKit();
+    const app = await testApp(gateway);
+
+    const missingLobby = await app.inject({
+      method: "PATCH",
+      url: "/api/lobbies/missing/position",
+      payload: { participantIdentity, sideIndex: 0 },
+    });
+    const missingParticipant = await app.inject({
+      method: "PATCH",
+      url: path,
+      payload: { participantIdentity, sideIndex: 0 },
+    });
+
+    expect(missingLobby.statusCode).toBe(404);
+    expect(missingParticipant.statusCode).toBe(403);
+  });
+
+  it("serializes simultaneous claims so exactly one participant gets a side", async () => {
+    const { active, gateway } = fakeLiveKit();
+    active.set("debate-dream-cheating", [
+      { identity: participantIdentity, role: "spectator", sideIndex: null },
+      { identity: otherIdentity, role: "spectator", sideIndex: null },
+    ]);
+    const app = await testApp(gateway);
+
+    const responses = await Promise.all(
+      [participantIdentity, otherIdentity].map((identity) =>
+        app.inject({
+          method: "PATCH",
+          url: path,
+          payload: { participantIdentity: identity, sideIndex: 0 },
+        }),
+      ),
+    );
+
+    expect(
+      responses
+        .map(({ statusCode }) => statusCode)
+        .sort((left, right) => left - right),
+    ).toEqual([200, 409]);
   });
 });
 
